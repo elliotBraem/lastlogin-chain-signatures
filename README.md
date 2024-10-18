@@ -2,6 +2,31 @@
 
 This is a fork of [google-chain-signatures](https://github.com/esaminu/google-chain-signatures), adapted to verify sessions using [LastLogin](https://lastlogin.io/).
 
+## Functions
+
+```rust
+ #[payable]
+  pub fn sign_with_lastlogin_session(
+      &mut self,
+      proof: Proof,             // generated on your device
+      public_inputs: Vec<U256>, // this accompanies the proof
+      session_id: String,       // when was the last time you logged on?
+      hostname: String,         // what server is calling
+      chain: u64,
+  ) -> Promise {
+    // verify proof and sign
+  }
+```
+
+```rust
+ #[payable]
+ pub fn create_session(&mut self, email: String, hostname: String) -> String {
+    // hex encode email, hostname, and current timestamp
+    // set an expiry
+    // save session to contract
+  }
+```
+
 ## How to Build Locally?
 
 Install [`cargo-near`](https://github.com/near/cargo-near) and run:

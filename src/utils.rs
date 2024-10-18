@@ -18,12 +18,12 @@ pub fn verify_lastlogin_token(
         .get_session(session_id.to_string())
         .ok_or("Session not found")?;
 
-    // Verify the hostname
+    // verify the hostname
     if session.hostname != hostname {
         return Err("Hostname mismatch".into());
     }
 
-    // Check if the session has expired
+    // check if expired
     if session.expires_at < env::block_timestamp() {
         return Err("Session has expired".into());
     }

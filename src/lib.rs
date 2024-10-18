@@ -16,7 +16,7 @@ use utils::verify_lastlogin_token;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub verifier: Verifier, // because their is a proof to be verified (that you are who you are)
-    signer_contract_id: AccountId, // contract that will sign -- could be your account or something else
+    signer_contract_id: AccountId, // mpc signer contract
     sessions: UnorderedMap<String, LastLoginSession>,
 }
 
@@ -26,8 +26,8 @@ impl Contract {
     pub fn new(verifier: Verifier, signer_contract_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Already initialized");
         Self {
-            verifier,           
-            signer_contract_id, 
+            verifier,
+            signer_contract_id,
             sessions: UnorderedMap::new(b"s"),
         }
     }
@@ -52,14 +52,18 @@ impl Contract {
         hostname: String,         // what server is calling
         chain: u64,
     ) -> Promise {
+
+        // verify LastLogin session
+        let session = verify_lastlogin_token(&self, &session_id, &hostname)
+            .expect("Failed to verify LastLogin session"); // if this fails, then they will have to create_session
+
+        // verify proof
         let verification_result = self.verifier.verify(public_inputs.clone(), proof);
         assert!(verification_result, "Verification failed");
 
-        // Verify LastLogin session
-        let session = verify_lastlogin_token(&self, &session_id, &hostname)
-            .expect("Failed to verify LastLogin session");
+        // prepare signature 
 
-        // this will need to reflect what the
+        // todo: this will need to be updated for a lastlogin payload, what will mpc expect?
         let mut payload = [0u8; 32];
         for (i, &value) in public_inputs[0..32].iter().enumerate() {
             payload[i] = U256::as_u32(&value) as u8;
@@ -68,6 +72,7 @@ impl Contract {
         let path = DerivationPath {
             chain,
             meta: Meta {
+                // how important is this?
                 email: session.email,
                 user_id: session.session_id, // Using session_id as user_id
             },
@@ -105,6 +110,7 @@ impl Contract {
             "Only the contract account can create_sessions"
         );
 
+        // create session id with expiry
         let session_id =
             env::sha256(format!("{}{}{}", email, hostname, env::block_timestamp()).as_bytes());
         let session_id = hex::encode(session_id);
@@ -117,6 +123,7 @@ impl Contract {
             expires_at,
         };
 
+        // save session
         self.sessions.insert(&session_id, &session);
 
         session_id
