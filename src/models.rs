@@ -5,7 +5,7 @@ use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 #[serde(crate = "near_sdk::serde")]
 pub struct Meta {
     pub email: String,
-    pub user_id: String,
+    pub aud: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -14,7 +14,6 @@ pub struct DerivationPath {
     pub chain: u64,
     pub meta: Meta,
 }
-
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SignRequest {
