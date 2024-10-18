@@ -1,6 +1,6 @@
-# google-chain-signatures
+# lastlogin-chain-signatures
 
-cargo-near-new-project-description
+This is a fork of [google-chain-signatures](https://github.com/esaminu/google-chain-signatures), adapted to verify sessions using [LastLogin](https://lastlogin.io/).
 
 ## How to Build Locally?
 
