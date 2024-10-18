@@ -1,5 +1,5 @@
 [package]
-name = "google-chain-signatures"
+name = "lastlogin-chain-signatures"
 description = "cargo-near-new-project-description"
 version = "0.1.0"
 edition = "2021"
