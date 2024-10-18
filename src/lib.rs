@@ -61,14 +61,13 @@ impl Contract {
         let verification_result = self.verifier.verify(public_inputs.clone(), proof);
         assert!(verification_result, "Verification failed");
 
-        // prepare signature 
-
-        // todo: this will need to be updated for a lastlogin payload, what will mpc expect?
+        // build payload
         let mut payload = [0u8; 32];
-        for (i, &value) in public_inputs[0..32].iter().enumerate() {
+        for (i, &value) in public_inputs[68..100].iter().enumerate() {
             payload[i] = U256::as_u32(&value) as u8;
         }
 
+        // prepare signature 
         let path = DerivationPath {
             chain,
             meta: Meta {
@@ -95,6 +94,7 @@ impl Contract {
         const TGAS: u64 = 1_000_000_000_000;
         const GAS_FOR_MPC_CALL: Gas = Gas(100 * TGAS);
 
+        // send to mpc for signature
         Promise::new(self.signer_contract_id.clone()).function_call(
             "sign".to_string(),
             serde_json::to_vec(&args).unwrap(),
