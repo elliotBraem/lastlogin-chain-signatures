@@ -27,6 +27,12 @@ This is a fork of [google-chain-signatures](https://github.com/esaminu/google-ch
   }
 ```
 
+## Proof & Verifier
+
+This contract needs to be accompanied by a client creating a proof, and a verifier deployed with the contract.
+
+TBD
+
 ## How to Build Locally?
 
 Install [`cargo-near`](https://github.com/near/cargo-near) and run:
