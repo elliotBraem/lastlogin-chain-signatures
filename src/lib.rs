@@ -1,22 +1,23 @@
+use near_bigint::U256;
+use near_groth16_verifier::{Proof, Verifier};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::UnorderedMap;
 use near_sdk::AccountId;
 use near_sdk::{env, near_bindgen, serde_json::json, Gas, PanicOnDefault, Promise};
-use near_groth16_verifier::{Proof, Verifier};
-use near_bigint::U256;
 use serde_json_canonicalizer::to_string as to_canonical_json;
 
-mod utils;
 mod models;
+mod utils;
 
-use utils::{hash_to_u256, decode_jwt_payload, convert_modulus};
-use models::{SignRequest, DerivationPath, Meta};
+use models::{DerivationPath, LastLoginSession, Meta, SignRequest};
+use utils::verify_lastlogin_token;
 
 #[near_bindgen]
-#[derive(PanicOnDefault, BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub verifier: Verifier,
-    moduli: Vec<Vec<U256>>,
-    signer_contract_id: AccountId
+    pub verifier: Verifier, // because their is a proof to be verified (that you are who you are)
+    signer_contract_id: AccountId, // contract that will sign -- could be your account or something else
+    sessions: UnorderedMap<String, LastLoginSession>,
 }
 
 #[near_bindgen]
@@ -25,9 +26,9 @@ impl Contract {
     pub fn new(verifier: Verifier, signer_contract_id: AccountId) -> Self {
         assert!(!env::state_exists(), "Already initialized");
         Self {
-            verifier,
-            moduli: Vec::new(),
-            signer_contract_id
+            verifier,           
+            signer_contract_id, 
+            sessions: UnorderedMap::new(b"s"),
         }
     }
 
@@ -43,48 +44,33 @@ impl Contract {
     }
 
     #[payable]
-    pub fn sign_with_google_token(
+    pub fn sign_with_lastlogin_session(
         &mut self,
-        proof: Proof,
-        public_inputs: Vec<U256>,
-        message: String,
+        proof: Proof,             // generated on your device
+        public_inputs: Vec<U256>, // this accompanies the proof
+        session_id: String,       // when was the last time you logged on?
+        hostname: String,         // what server is calling
         chain: u64,
     ) -> Promise {
         let verification_result = self.verifier.verify(public_inputs.clone(), proof);
         assert!(verification_result, "Verification failed");
 
+        // Verify LastLogin session
+        let session = verify_lastlogin_token(&self, &session_id, &hostname)
+            .expect("Failed to verify LastLogin session");
+
+        // this will need to reflect what the
         let mut payload = [0u8; 32];
-        for (i, &value) in public_inputs[68..100].iter().enumerate() {
+        for (i, &value) in public_inputs[0..32].iter().enumerate() {
             payload[i] = U256::as_u32(&value) as u8;
         }
 
-        let public_key_modulus = &public_inputs[32..64];
-        assert!(
-            self.moduli
-                .iter()
-                .any(|modulus| modulus == public_key_modulus),
-            "Public key modulus does not match any known Google public key"
-        );
-
-        let message_hash_u256 = hash_to_u256(&message).expect("Failed to hash message");
-        assert_eq!(
-            &public_inputs[64..68],
-            message_hash_u256,
-            "Message hash does not match"
-        );
-
-        let (_sub, email, iss, aud, exp) =
-            decode_jwt_payload(&message).expect("Failed to decode JWT payload");
-        assert_eq!(iss, "https://accounts.google.com", "Invalid issuer");
-        assert_eq!(
-            exp > env::block_timestamp() / 1_000_000_000,
-            true,
-            "Token expired"
-        );
-
         let path = DerivationPath {
             chain,
-            meta: Meta { email, aud },
+            meta: Meta {
+                email: session.email,
+                user_id: session.session_id, // Using session_id as user_id
+            },
         };
 
         let canonical_path =
@@ -106,26 +92,41 @@ impl Contract {
 
         Promise::new(self.signer_contract_id.clone()).function_call(
             "sign".to_string(),
-            near_sdk::serde_json::to_vec(&args).unwrap(),
+            serde_json::to_vec(&args).unwrap(),
             deposit,
             GAS_FOR_MPC_CALL,
         )
     }
 
-    pub fn update_moduli(&mut self, new_moduli: Vec<String>) {
+    pub fn create_session(&mut self, email: String, hostname: String) -> String {
         assert_eq!(
             env::predecessor_account_id(),
             env::current_account_id(),
-            "Only the contract account can update moduli"
+            "Only the contract account can create_sessions"
         );
 
-        let converted_moduli: Vec<Vec<U256>> = new_moduli
-            .into_iter()
-            .map(|modulus_str| {
-                convert_modulus(&modulus_str).expect("Failed to convert modulus. Aborting update.")
-            })
-            .collect();
+        let session_id =
+            env::sha256(format!("{}{}{}", email, hostname, env::block_timestamp()).as_bytes());
+        let session_id = hex::encode(session_id);
+        let expires_at = env::block_timestamp() + 14 * 24 * 60 * 60 * 1_000_000_000; // 14 days from now
 
-        self.moduli = converted_moduli;
+        let session = LastLoginSession {
+            email,
+            session_id: session_id.clone(),
+            hostname,
+            expires_at,
+        };
+
+        self.sessions.insert(&session_id, &session);
+
+        session_id
+    }
+
+    pub fn delete_session(&mut self, session_id: String) {
+        self.sessions.remove(&session_id);
+    }
+
+    pub fn get_session(&self, session_id: String) -> Option<LastLoginSession> {
+        self.sessions.get(&session_id)
     }
 }
